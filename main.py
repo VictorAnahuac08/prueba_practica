@@ -174,13 +174,16 @@ def crear_producto(producto: Producto):
 
     # TODO:
     # 1. Leer el CSV
+
+    df, sha = get_csv()
+    
     # 2. Crear un nuevo ID
     # 3. Crear el nuevo registro
     # 4. Agregarlo al DataFrame
     # 5. Guardar el DataFrame en GitHub
     # 6. Regresar el producto creado
 
-    pass
+    return{"esto recibe el endpoint":producto}
 
 
 @app.put("/productos/{producto_id}")
