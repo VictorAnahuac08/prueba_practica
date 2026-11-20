@@ -176,7 +176,7 @@ def crear_producto(producto: Producto):
     # 1. Leer el CSV
 
     df, sha = get_csv()
-    agregar = producto.to_dict()
+    agregar = producto.to_dict(orient="records")
     df = pd.concat([df, pd.DataFrame([agregar])], ignore_index=True)
     save_csv(df,sha)
     # 2. Crear un nuevo ID
