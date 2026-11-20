@@ -171,19 +171,18 @@ def prueba_guardado():
 
 @app.post("/productos")
 def crear_producto(producto: Producto):
-
     # TODO:
     # 1. Leer el CSV
-
     df, sha = get_csv()
-    agregar = producto.to_dict(orient="records")
-    df = pd.concat([df, pd.DataFrame([agregar])], ignore_index=True)
+    if "id" not in df.columns:
+        nuevo_id = 1
+    else:
+        nuevo_id = int(df["id"].max()) + 1
+    nuevo_producto = producto.model_dump()  
+    nuevo_producto["id"] = nuevo_id
+    
+    df = pd.concat([df, pd.DataFrame([nuevo_producto])], ignore_index=True)
     save_csv(df,sha)
-    # 2. Crear un nuevo ID
-    # 3. Crear el nuevo registro
-    # 4. Agregarlo al DataFrame
-    # 5. Guardar el DataFrame en GitHub
-    # 6. Regresar el producto creado
 
     return{"esto recibe el endpoint":producto}
 
