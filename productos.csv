@@ -1,7 +1,7 @@
-id,nombre,precio,
-1.0,Laptop,15000.0,
-2.0,Mouse,350.0,
-3.0,Teclado,800.0,
-4.0,Monitor,4500.0,
-5.0,Auriculares,1200.0,
+id,nombre,precio
+1.0,Laptop,15000.0
+2.0,Mouse,350.0
+3.0,Teclado,800.0
+4.0,Monitor,4500.0
+5.0,Auriculares,1200.0
 
