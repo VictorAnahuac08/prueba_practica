@@ -1,11 +1,19 @@
 import os
 import base64
 import requests
+import pandas as pd
 
+from io import StringIO
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
+
 app = FastAPI()
+
+
+# ============================================================
+# CONFIGURACIÓN DE GITHUB
+# ============================================================
 
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 GITHUB_OWNER = os.getenv("GITHUB_OWNER")
@@ -14,55 +22,84 @@ GITHUB_FILE = os.getenv("GITHUB_FILE")
 GITHUB_BRANCH = os.getenv("GITHUB_BRANCH", "main")
 
 
+# ============================================================
+# FUNCIONES PARA LEER Y GUARDAR EL CSV
+# ============================================================
+
 def github_url():
+    """
+    Construye la URL de la API de GitHub
+    que apunta al archivo CSV.
+    """
+
     return (
         f"https://api.github.com/repos/"
-        f"{GITHUB_OWNER}/{GITHUB_REPO}/contents/{GITHUB_FILE}"
+        f"{GITHUB_OWNER}/{GITHUB_REPO}/contents/"
+        f"{GITHUB_FILE}"
     )
 
 
 def get_csv():
+    """
+    Descarga el CSV desde GitHub.
+
+    Regresa:
+        df  -> DataFrame con los datos
+        sha -> SHA actual del archivo en GitHub
+    """
+
     headers = {
         "Authorization": f"Bearer {GITHUB_TOKEN}",
         "Accept": "application/vnd.github+json"
-    }
-
-    params = {
-        "ref": GITHUB_BRANCH
     }
 
     response = requests.get(
         github_url(),
         headers=headers,
-        params=params
+        params={"ref": GITHUB_BRANCH}
     )
 
     if response.status_code != 200:
         raise HTTPException(
             status_code=500,
-            detail="No fue posible obtener el CSV desde GitHub"
+            detail="No se pudo leer el archivo desde GitHub"
         )
 
     data = response.json()
 
+    # GitHub guarda el contenido en Base64
     content = base64.b64decode(data["content"]).decode("utf-8")
-    sha = data["sha"]
 
-    return content, sha
+    # Convertimos el CSV en DataFrame
+    df = pd.read_csv(StringIO(content))
+
+    return df, data["sha"]
 
 
-def save_csv(content, sha):
+def save_csv(df, sha):
+    """
+    Guarda un DataFrame actualizado en GitHub.
+
+    Parámetros:
+        df  -> DataFrame que queremos guardar
+        sha -> SHA actual del archivo
+    """
+
+    # Convertimos el DataFrame a CSV
+    csv_content = df.to_csv(index=False)
+
+    # GitHub requiere el contenido en Base64
+    encoded_content = base64.b64encode(
+        csv_content.encode("utf-8")
+    ).decode("utf-8")
+
     headers = {
         "Authorization": f"Bearer {GITHUB_TOKEN}",
         "Accept": "application/vnd.github+json"
     }
 
-    encoded_content = base64.b64encode(
-        content.encode("utf-8")
-    ).decode("utf-8")
-
-    body = {
-        "message": "Actualizar productos.csv desde la API",
+    data = {
+        "message": "Actualizar datos desde FastAPI",
         "content": encoded_content,
         "sha": sha,
         "branch": GITHUB_BRANCH
@@ -71,151 +108,121 @@ def save_csv(content, sha):
     response = requests.put(
         github_url(),
         headers=headers,
-        json=body
+        json=data
     )
 
-    if response.status_code not in (200, 201):
+    if response.status_code not in [200, 201]:
         raise HTTPException(
             status_code=500,
-            detail="No fue posible actualizar el CSV en GitHub"
+            detail="No se pudo guardar el archivo en GitHub"
         )
 
-    return response.json()
+    return True
 
 
-def parse_csv(content):
-    lines = content.strip().splitlines()
+# ============================================================
+# MODELOS PYDANTIC
+# ============================================================
 
-    headers = lines[0].split(",")
-
-    rows = []
-
-    for line in lines[1:]:
-        values = line.split(",")
-
-        row = dict(zip(headers, values))
-        rows.append(row)
-
-    return headers, rows
-
-
-def build_csv(headers, rows):
-    lines = [",".join(headers)]
-
-    for row in rows:
-        lines.append(
-            ",".join(str(row[h]) for h in headers)
-        )
-
-    return "\n".join(lines) + "\n"
-
-
-class ProductoPUT(BaseModel):
+class Producto(BaseModel):
     nombre: str
     precio: float
 
 
-class ProductoPATCH(BaseModel):
+class ProductoPatch(BaseModel):
     nombre: str | None = None
     precio: float | None = None
 
 
-@app.put("/productos/{producto_id}")
-def actualizar_producto(
-    producto_id: int,
-    producto: ProductoPUT
-):
-    content, sha = get_csv()
+# ============================================================
+# ENDPOINTS
+# ============================================================
 
-    headers, rows = parse_csv(content)
+@app.get("/productos")
+def obtener_productos():
 
-    encontrado = False
+    # Leer el CSV desde GitHub
+    df, sha = get_csv()
 
-    for row in rows:
-        if int(row["id"]) == producto_id:
-            row["nombre"] = producto.nombre
-            row["precio"] = str(producto.precio)
-            encontrado = True
-            break
-
-    if not encontrado:
-        raise HTTPException(
-            status_code=404,
-            detail="Producto no encontrado"
-        )
-
-    new_content = build_csv(headers, rows)
-
-    save_csv(new_content, sha)
+    # Convertir el DataFrame a una lista de diccionarios
+    productos = df.to_dict(orient="records")
 
     return {
-        "mensaje": "Producto actualizado",
-        "producto": producto_id
+        "productos": productos
     }
+
+@app.get("/productos/prueba")
+def prueba_guardado():
+
+    # Leer el CSV
+    df, sha = get_csv()
+
+    # Modificar el DataFrame
+    df["precio"] = df["precio"] * 1.10
+
+    # Guardar el DataFrame actualizado
+    save_csv(df, sha)
+
+    return {
+        "mensaje": "Los precios fueron actualizados",
+        "productos": df.to_dict(orient="records")
+    }
+  
+
+@app.post("/productos")
+def crear_producto(producto: Producto):
+
+    # TODO:
+    # 1. Leer el CSV
+    # 2. Crear un nuevo ID
+    # 3. Crear el nuevo registro
+    # 4. Agregarlo al DataFrame
+    # 5. Guardar el DataFrame en GitHub
+    # 6. Regresar el producto creado
+
+    pass
+
+
+@app.put("/productos/{producto_id}")
+def reemplazar_producto(
+    producto_id: int,
+    producto: Producto
+):
+
+    # TODO:
+    # 1. Leer el CSV
+    # 2. Buscar el producto por ID
+    # 3. Reemplazar nombre y precio
+    # 4. Guardar el DataFrame en GitHub
+    # 5. Regresar el producto actualizado
+
+    pass
 
 
 @app.patch("/productos/{producto_id}")
 def modificar_producto(
     producto_id: int,
-    cambios: ProductoPATCH
+    producto: ProductoPatch
 ):
-    content, sha = get_csv()
 
-    headers, rows = parse_csv(content)
+    # TODO:
+    # 1. Leer el CSV
+    # 2. Buscar el producto por ID
+    # 3. Modificar solamente los campos recibidos
+    # 4. Guardar el DataFrame en GitHub
+    # 5. Regresar el producto actualizado
 
-    encontrado = False
-
-    for row in rows:
-        if int(row["id"]) == producto_id:
-
-            if cambios.nombre is not None:
-                row["nombre"] = cambios.nombre
-
-            if cambios.precio is not None:
-                row["precio"] = str(cambios.precio)
-
-            encontrado = True
-            break
-
-    if not encontrado:
-        raise HTTPException(
-            status_code=404,
-            detail="Producto no encontrado"
-        )
-
-    new_content = build_csv(headers, rows)
-
-    save_csv(new_content, sha)
-
-    return {
-        "mensaje": "Producto modificado",
-        "producto": producto_id
-    }
+    pass
 
 
 @app.delete("/productos/{producto_id}")
 def eliminar_producto(producto_id: int):
 
-    content, sha = get_csv()
+    # TODO:
+    # 1. Leer el CSV
+    # 2. Buscar el producto por ID
+    # 3. Eliminar el registro
+    # 4. Guardar el DataFrame en GitHub
+    # 5. Regresar un mensaje de confirmación
 
-    headers, rows = parse_csv(content)
-
-    nuevos_rows = [
-        row for row in rows
-        if int(row["id"]) != producto_id
-    ]
-
-    if len(nuevos_rows) == len(rows):
-        raise HTTPException(
-            status_code=404,
-            detail="Producto no encontrado"
-        )
-
-    new_content = build_csv(headers, nuevos_rows)
-
-    save_csv(new_content, sha)
-
-    return {
-        "mensaje": "Producto eliminado",
-        "producto": producto_id
-    }
+    pass
