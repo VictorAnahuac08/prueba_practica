@@ -6,12 +6,6 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
 app = FastAPI()
-import hashlib
-
-message = "Hello, World!"
-hash_object = hashlib.sha256(message.encode())
-hex_digest = hash_object.hexdigest()
-print(hex_digest)
 
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 GITHUB_OWNER = os.getenv("GITHUB_OWNER")
